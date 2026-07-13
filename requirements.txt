@@ -1,0 +1,7 @@
+numpy
+pandas
+biopython
+pydantic
+pytest
+jupyterlab
+python-dotenv
