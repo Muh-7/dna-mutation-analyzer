@@ -7,6 +7,7 @@ from src.preprocessing.mutation_detector import detect_snv
 from src.preprocessing.sequence_validator import validate_sequence
 from src.preprocessing.window_extractor import extract_mutation_window
 
+from src.schemas.variant_input import VariantInput
 
 def prepare_variant_input(
     reference_sequence: str,
@@ -58,6 +59,7 @@ def prepare_variant_input(
         flank_size=flank_size,
         allow_n=allow_n,
     )
+    
 
     return {
         "reference_sequence": reference,
@@ -67,3 +69,43 @@ def prepare_variant_input(
         "mutation": asdict(mutation),
         "window": asdict(window),
     }
+    
+def prepare_variant_model(
+    variant: VariantInput,
+) -> dict[str, Any]:
+    """
+    Prepare a validated VariantInput object for downstream analysis.
+
+    Parameters
+    ----------
+    variant:
+        A validated DNA variant input model.
+
+    Returns
+    -------
+    dict
+        Preprocessed sequences, mutation information,
+        extracted windows, and genomic metadata.
+    """
+    preprocessing_result = prepare_variant_input(
+        reference_sequence=variant.reference_sequence,
+        mutated_sequence=variant.mutated_sequence,
+        flank_size=variant.flank_size,
+        allow_n=False,
+    )
+
+    preprocessing_result["metadata"] = {
+        "analysis_mode": variant.analysis_mode.value,
+        "genome_build": variant.genome_build.value,
+        "chromosome": variant.chromosome,
+        "genomic_position": variant.genomic_position,
+        "gene_name": variant.gene_name,
+        "tissue": variant.tissue,
+        "strand": (
+            variant.strand.value
+            if variant.strand is not None
+            else None
+        ),
+    }
+
+    return preprocessing_result
