@@ -55,6 +55,6 @@ def test_validate_sequence_rejects_invalid_characters() -> None:
 
 
 def test_validate_sequence_cleans_before_validation() -> None:
-    result = validate_sequence(" acg\nt ")
+    result = validate_sequence(" acg\nnt ")
 
     assert result == "ACGNT"
