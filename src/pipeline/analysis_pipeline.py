@@ -1,18 +1,27 @@
 """Main analysis pipeline for the DNA Mutation Analyzer project."""
 
-from dataclasses import asdict
-from pathlib import Path
-from typing import Any
-
 from src.annotation.genomic_annotator import annotate_genomic_position
 from src.preprocessing.pipeline import prepare_variant_model
 from src.rna.transcription import analyze_variant_rna
 from src.schemas.variant_input import AnalysisMode, VariantInput
 
 
+from dataclasses import asdict
+from pathlib import Path
+from typing import Any
+
+from src.models.alphagenome_client import (
+    analyze_variant_expression,
+    create_alphagenome_client,
+)
+
+
+
 def run_analysis_pipeline(
     variant: VariantInput,
     annotation_database_path: str | Path | None = None,
+    run_expression_analysis: bool = False,
+    alphagenome_model: Any | None = None,
 ) -> dict[str, Any]:
     """
     Run all currently supported DNA mutation analyses.
@@ -43,7 +52,7 @@ def run_analysis_pipeline(
     preprocessing_result = prepare_variant_model(variant)
 
     result: dict[str, Any] = {
-        "project_version": "0.3.0",
+        "project_version": "0.4.0",
         "analysis_status": "completed",
         "preprocessing": preprocessing_result,
         "rna_analysis": {
@@ -59,6 +68,14 @@ def run_analysis_pipeline(
                 "an annotation database."
             ),
         },
+        
+        "expression_analysis": {
+    "status": "not_run",
+    "reason": (
+        "AlphaGenome expression analysis was not requested."
+              ),
+        },
+        
         "scientific_notes": [
             (
                 "The RNA output represents direct transcription from "
@@ -76,6 +93,10 @@ def run_analysis_pipeline(
             (
                 "The outputs are computational results intended for "
                 "research and educational use."
+            ),
+            (
+                "AlphaGenome expression scores compare predicted ALT and "
+                "REF RNA-seq signals and are not direct laboratory measurements."
             ),
         ],
     }
@@ -106,4 +127,31 @@ def run_analysis_pipeline(
             **asdict(annotation_result),
         }
 
+    
+    
+    if run_expression_analysis:
+        if variant.analysis_mode != AnalysisMode.GENOMIC:
+            result["expression_analysis"] = {
+                "status": "not_run",
+                "reason": (
+                    "AlphaGenome expression analysis requires "
+                    "genomic mode."
+                ),
+            }
+
+        else:
+            model = (
+                alphagenome_model
+                if alphagenome_model is not None
+                else create_alphagenome_client()
+            )
+
+            result["expression_analysis"] = (
+                analyze_variant_expression(
+                    model=model,
+                    variant_input=variant,
+                )
+            )
+        
+    
     return result

@@ -38,7 +38,7 @@ def test_genomic_pipeline_returns_complete_analysis() -> None:
 
     result = run_analysis_pipeline(variant)
 
-    assert result["project_version"] == "0.3.0"
+    assert result["project_version"] == "0.4.0"
     assert result["analysis_status"] == "completed"
 
     preprocessing = result["preprocessing"]
@@ -190,3 +190,97 @@ def test_raw_pipeline_skips_genomic_annotation() -> None:
 
     assert annotation["status"] == "not_run"
     assert "genomic" in annotation["reason"].lower()
+    
+    
+    
+    
+def test_expression_analysis_is_disabled_by_default() -> None:
+    variant = VariantInput(
+        analysis_mode="genomic",
+        reference_sequence="AACCGAACTG",
+        mutated_sequence="AACCGCACTG",
+        chromosome="22",
+        genomic_position=36201698,
+        gene_name="APOL4",
+        tissue="colon",
+        strand="+",
+    )
+
+    result = run_analysis_pipeline(variant)
+
+    expression = result["expression_analysis"]
+
+    assert expression["status"] == "not_run"
+    assert "not requested" in expression["reason"]
+    
+
+
+
+def test_pipeline_includes_expression_analysis(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    variant = VariantInput(
+        analysis_mode="genomic",
+        reference_sequence="AACCGAACTG",
+        mutated_sequence="AACCGCACTG",
+        chromosome="22",
+        genomic_position=36201698,
+        gene_name="APOL4",
+        tissue="colon",
+        strand="+",
+    )
+
+    fake_model = object()
+
+    fake_expression_result = {
+        "status": "completed",
+        "model": "AlphaGenome",
+        "output_type": "RNA_SEQ",
+        "gene_name": "APOL4",
+        "tissue_query": "colon",
+        "total_score_rows": 13727,
+        "matched_tracks": 8,
+        "summary": {
+            "status": "completed",
+            "direction": "predicted_decrease",
+            "raw_score": -1.938638687133789,
+            "quantile_score": -0.9999998807907104,
+        },
+        "tracks": [],
+    }
+
+    def fake_analyze_variant_expression(
+        model: object,
+        variant_input: VariantInput,
+    ) -> dict[str, object]:
+        assert model is fake_model
+        assert variant_input.gene_name == "APOL4"
+
+        return fake_expression_result
+
+    monkeypatch.setattr(
+        (
+            "src.pipeline.analysis_pipeline."
+            "analyze_variant_expression"
+        ),
+        fake_analyze_variant_expression,
+    )
+
+    result = run_analysis_pipeline(
+        variant=variant,
+        run_expression_analysis=True,
+        alphagenome_model=fake_model,
+    )
+
+    expression = result["expression_analysis"]
+
+    assert expression["status"] == "completed"
+    assert expression["matched_tracks"] == 8
+    assert (
+        expression["summary"]["direction"]
+        == "predicted_decrease"
+    )
+    assert (
+        expression["summary"]["raw_score"]
+        == pytest.approx(-1.938638687133789)
+    )
