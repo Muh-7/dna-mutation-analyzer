@@ -123,7 +123,6 @@ class VariantInput(BaseModel):
                 "genomic_position": self.genomic_position,
                 "gene_name": self.gene_name,
                 "tissue": self.tissue,
-                "strand": self.strand,
             }
 
             missing_fields = [
