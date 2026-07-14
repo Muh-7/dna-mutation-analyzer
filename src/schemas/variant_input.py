@@ -1,7 +1,7 @@
 """Input schemas for DNA mutation analysis."""
 
 from enum import Enum
-from typing import Self
+from typing_extensions import Self
 
 from pydantic import (
     BaseModel,

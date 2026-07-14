@@ -6,3 +6,5 @@ pytest
 jupyterlab
 python-dotenv
 gffutils
+typing-extensions
+alphagenome
