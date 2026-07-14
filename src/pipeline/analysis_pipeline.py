@@ -2,7 +2,7 @@
 
 from src.annotation.genomic_annotator import annotate_genomic_position
 from src.preprocessing.pipeline import prepare_variant_model
-from src.rna.transcription import analyze_variant_rna
+from src.rna.transcription import analyze_rna_change
 from src.schemas.variant_input import AnalysisMode, VariantInput
 
 
@@ -17,11 +17,23 @@ from src.models.alphagenome_client import (
 
 
 
+from src.tf_binding.analysis import (
+    analyze_tf_binding_sequences,
+)
+
+
+
+
+
 def run_analysis_pipeline(
     variant: VariantInput,
     annotation_database_path: str | Path | None = None,
     run_expression_analysis: bool = False,
     alphagenome_model: Any | None = None,
+    run_tf_binding_analysis: bool = False,
+    motif_database_path: str | Path | None = None,
+    fimo_executable: str = "fimo",
+    tf_binding_p_value_threshold: float = 1e-4,
 ) -> dict[str, Any]:
     """
     Run all currently supported DNA mutation analyses.
@@ -52,7 +64,7 @@ def run_analysis_pipeline(
     preprocessing_result = prepare_variant_model(variant)
 
     result: dict[str, Any] = {
-        "project_version": "0.4.0",
+        "project_version": "0.5.0",
         "analysis_status": "completed",
         "preprocessing": preprocessing_result,
         "rna_analysis": {
@@ -98,18 +110,27 @@ def run_analysis_pipeline(
                 "AlphaGenome expression scores compare predicted ALT and "
                 "REF RNA-seq signals and are not direct laboratory measurements."
             ),
+            (
+                "FIMO results describe statistical sequence-to-motif "
+                "matches and do not directly prove transcription-factor "
+                "binding in living cells."
+            ),            
         ],
+        
+        "tf_binding_analysis": {
+                "status": "not_run",
+                "reason": (
+                "FIMO TF-binding analysis was not requested."
+        ),
+        },
+        
+        
+        "warnings": [],
+        
     }
-
-    if variant.strand is not None:
-        rna_result = analyze_variant_rna(variant)
-
-        result["rna_analysis"] = {
-            "status": "completed",
-            "analysis_type": "direct_genomic_transcription",
-            "is_mature_mrna": False,
-            **asdict(rna_result),
-        }
+    
+    
+    annotation_strand: str | None = None
 
     if (
         variant.analysis_mode == AnalysisMode.GENOMIC
@@ -122,12 +143,64 @@ def run_analysis_pipeline(
             gene_name=variant.gene_name,
         )
 
+        annotation_data = asdict(annotation_result)
+
         result["genomic_annotation"] = {
             "status": "completed",
-            **asdict(annotation_result),
+            **annotation_data,
         }
 
+        annotation_strand = annotation_result.strand    
     
+        
+    user_strand = (
+        variant.strand.value
+        if variant.strand is not None
+        else None
+    )
+
+    effective_strand = annotation_strand or user_strand
+
+    if (
+        annotation_strand is not None
+        and user_strand is not None
+        and annotation_strand != user_strand
+    ):
+        result["warnings"].append(
+            {
+                "type": "strand_mismatch",
+                "message": (
+                    f"The input strand was {user_strand}, but GENCODE "
+                    f"annotates {variant.gene_name} on strand "
+                    f"{annotation_strand}. The GENCODE strand was used "
+                    "for RNA transcription."
+                ),
+            }
+        )
+
+    if effective_strand is not None:
+        rna_result = analyze_rna_change(
+            reference_sequence=variant.reference_sequence,
+            mutated_sequence=variant.mutated_sequence,
+            strand=effective_strand,
+            allow_n=False,
+        )
+
+        result["rna_analysis"] = {
+            "status": "completed",
+            "analysis_type": "direct_genomic_transcription",
+            "is_mature_mrna": False,
+            "strand_source": (
+                "GENCODE"
+                if annotation_strand is not None
+                else "user_input"
+            ),
+            **asdict(rna_result),
+        }
+    
+    
+    
+
     
     if run_expression_analysis:
         if variant.analysis_mode != AnalysisMode.GENOMIC:
@@ -152,6 +225,36 @@ def run_analysis_pipeline(
                     variant_input=variant,
                 )
             )
+    
+    
+    if run_tf_binding_analysis:
+        if motif_database_path is None:
+            raise ValueError(
+                "motif_database_path is required when "
+                "run_tf_binding_analysis=True."
+            )
+
+        preprocessing_data = result["preprocessing"]
+        window_data = preprocessing_data["window"]
+
+        result["tf_binding_analysis"] = (
+            analyze_tf_binding_sequences(
+                reference_sequence=(
+                    window_data["reference_window"]
+                ),
+                mutated_sequence=(
+                    window_data["mutated_window"]
+                ),
+                motif_database_path=(
+                    motif_database_path
+                ),
+                fimo_executable=fimo_executable,
+                p_value_threshold=(
+                    tf_binding_p_value_threshold
+                ),
+            )
+        )    
+        
         
     
     return result

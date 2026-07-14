@@ -8,6 +8,7 @@ from src.annotation.database import build_annotation_database
 
 from src.pipeline.analysis_pipeline import run_analysis_pipeline
 from src.schemas.variant_input import VariantInput
+from src.annotation.genomic_annotator import GenomicAnnotation
 
 
 
@@ -38,7 +39,7 @@ def test_genomic_pipeline_returns_complete_analysis() -> None:
 
     result = run_analysis_pipeline(variant)
 
-    assert result["project_version"] == "0.4.0"
+    assert result["project_version"] == "0.5.0"
     assert result["analysis_status"] == "completed"
 
     preprocessing = result["preprocessing"]
@@ -284,3 +285,140 @@ def test_pipeline_includes_expression_analysis(
         expression["summary"]["raw_score"]
         == pytest.approx(-1.938638687133789)
     )
+
+
+
+
+def test_gencode_strand_overrides_incorrect_input_strand(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    variant = VariantInput(
+        analysis_mode="genomic",
+        reference_sequence="AACCGAACTG",
+        mutated_sequence="AACCGCACTG",
+        chromosome="22",
+        genomic_position=36201698,
+        gene_name="APOL4",
+        tissue="colon",
+        strand="+",
+    )
+
+    fake_annotation = GenomicAnnotation(
+        chromosome="chr22",
+        position_1_based=36201698,
+        primary_region="splice_region",
+        region_labels=("intron", "splice_region"),
+        gene_id="ENSG_TEST",
+        gene_name="APOL4",
+        gene_type="protein_coding",
+        strand="-",
+        gene_start=36189124,
+        gene_end=36204840,
+        transcription_start_site=36204840,
+        distance_to_tss=3142,
+        transcript_ids=("ENST_TEST",),
+        exon_numbers=(),
+        promoter_upstream_bp=2000,
+        splice_window_bp=2,
+    )
+
+    monkeypatch.setattr(
+        (
+            "src.pipeline.analysis_pipeline."
+            "annotate_genomic_position"
+        ),
+        lambda **kwargs: fake_annotation,
+    )
+
+    result = run_analysis_pipeline(
+        variant=variant,
+        annotation_database_path="fake.db",
+    )
+
+    rna = result["rna_analysis"]
+
+    assert rna["strand"] == "-"
+    assert rna["strand_source"] == "GENCODE"
+    assert rna["reference_rna"] == "CAGUUCGGUU"
+    assert rna["mutated_rna"] == "CAGUGCGGUU"
+    assert rna["position_1_based"] == 5
+    assert rna["reference_rna_base"] == "U"
+    assert rna["alternate_rna_base"] == "G"
+
+    assert result["warnings"][0]["type"] == "strand_mismatch"
+    
+
+
+
+def test_pipeline_includes_tf_binding_analysis(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    motif_path = (
+        tmp_path
+        / "motifs.meme"
+    )
+
+    motif_path.write_text(
+        "MEME version 4\n",
+        encoding="utf-8",
+    )
+
+    variant = VariantInput(
+        reference_sequence="AACCGAACTG",
+        mutated_sequence="AACCGCACTG",
+        flank_size=2,
+    )
+
+    fake_result = {
+        "status": "completed",
+        "tool": "FIMO",
+        "counts": {
+            "gained": 1,
+            "lost": 1,
+            "strengthened": 0,
+            "weakened": 0,
+            "unchanged": 0,
+        },
+        "changed_sites": 2,
+        "changes": [],
+    }
+
+    def fake_analysis(
+        reference_sequence: str,
+        mutated_sequence: str,
+        motif_database_path: str | Path,
+        fimo_executable: str,
+        p_value_threshold: float,
+    ) -> dict[str, object]:
+        assert reference_sequence == "CGAAC"
+        assert mutated_sequence == "CGCAC"
+        assert motif_database_path == motif_path
+        assert fimo_executable == "fimo"
+        assert p_value_threshold == pytest.approx(
+            1e-4
+        )
+
+        return fake_result
+
+    monkeypatch.setattr(
+        (
+            "src.pipeline.analysis_pipeline."
+            "analyze_tf_binding_sequences"
+        ),
+        fake_analysis,
+    )
+
+    result = run_analysis_pipeline(
+        variant=variant,
+        run_tf_binding_analysis=True,
+        motif_database_path=motif_path,
+    )
+
+    tf_result = result[
+        "tf_binding_analysis"
+    ]
+
+    assert tf_result["status"] == "completed"
+    assert tf_result["counts"]["gained"] == 1
+    assert tf_result["counts"]["lost"] == 1
