@@ -16,19 +16,28 @@ from src.models.alphagenome_client import (
 )
 
 
-
 from src.tf_binding.analysis import (
     analyze_tf_binding_sequences,
 )
 
+from src.models.alphagenome_client import (
+    analyze_variant_expression,
+    analyze_variant_splicing,
+    create_alphagenome_client,
+)
 
 
+
+from src.reporting.analysis_report import (
+    build_analysis_report,
+)
 
 
 def run_analysis_pipeline(
     variant: VariantInput,
     annotation_database_path: str | Path | None = None,
     run_expression_analysis: bool = False,
+    run_splicing_analysis: bool = False,
     alphagenome_model: Any | None = None,
     run_tf_binding_analysis: bool = False,
     motif_database_path: str | Path | None = None,
@@ -64,7 +73,7 @@ def run_analysis_pipeline(
     preprocessing_result = prepare_variant_model(variant)
 
     result: dict[str, Any] = {
-        "project_version": "0.5.0",
+        "project_version": "0.7.0",
         "analysis_status": "completed",
         "preprocessing": preprocessing_result,
         "rna_analysis": {
@@ -124,13 +133,19 @@ def run_analysis_pipeline(
         ),
         },
         
+        "splicing_analysis": {
+                "status": "not_run",
+                "reason": (
+                    "AlphaGenome splicing analysis was not requested."
+        ),
+        },
         
         "warnings": [],
         
     }
     
     
-    annotation_strand: str | None = None
+    annotation_strand: str | None = None    
 
     if (
         variant.analysis_mode == AnalysisMode.GENOMIC
@@ -202,31 +217,6 @@ def run_analysis_pipeline(
     
 
     
-    if run_expression_analysis:
-        if variant.analysis_mode != AnalysisMode.GENOMIC:
-            result["expression_analysis"] = {
-                "status": "not_run",
-                "reason": (
-                    "AlphaGenome expression analysis requires "
-                    "genomic mode."
-                ),
-            }
-
-        else:
-            model = (
-                alphagenome_model
-                if alphagenome_model is not None
-                else create_alphagenome_client()
-            )
-
-            result["expression_analysis"] = (
-                analyze_variant_expression(
-                    model=model,
-                    variant_input=variant,
-                )
-            )
-    
-    
     if run_tf_binding_analysis:
         if motif_database_path is None:
             raise ValueError(
@@ -254,7 +244,79 @@ def run_analysis_pipeline(
                 ),
             )
         )    
-        
-        
+    
+    
+    
+    
+    
+    # Create one shared AlphaGenome client when expression or
+    # splicing analysis is requested.
+    alphagenome_model_instance = alphagenome_model
+
+    if (
+        variant.analysis_mode == AnalysisMode.GENOMIC
+        and (
+            run_expression_analysis
+            or run_splicing_analysis
+        )
+        and alphagenome_model_instance is None
+    ):
+        alphagenome_model_instance = (
+            create_alphagenome_client()
+        )
+
+
+    # Gene-expression analysis
+    if run_expression_analysis:
+        if variant.analysis_mode != AnalysisMode.GENOMIC:
+            result["expression_analysis"] = {
+                "status": "not_run",
+                "reason": (
+                    "AlphaGenome expression analysis requires "
+                    "genomic mode."
+                ),
+            }
+
+        else:
+            if alphagenome_model_instance is None:
+                raise RuntimeError(
+                    "AlphaGenome model was not initialized."
+                )
+
+            result["expression_analysis"] = (
+                analyze_variant_expression(
+                    model=alphagenome_model_instance,
+                    variant_input=variant,
+                )
+            )
+
+
+    # Splicing analysis
+    if run_splicing_analysis:
+        if variant.analysis_mode != AnalysisMode.GENOMIC:
+            result["splicing_analysis"] = {
+                "status": "not_run",
+                "reason": (
+                    "AlphaGenome splicing analysis requires "
+                    "genomic mode."
+                ),
+            }
+
+        else:
+            if alphagenome_model_instance is None:
+                raise RuntimeError(
+                    "AlphaGenome model was not initialized."
+                )
+
+            result["splicing_analysis"] = (
+                analyze_variant_splicing(
+                    model=alphagenome_model_instance,
+                    variant_input=variant,
+                )
+            )
+    result["final_report"] = (
+    build_analysis_report(result)
+    )
+    
     
     return result

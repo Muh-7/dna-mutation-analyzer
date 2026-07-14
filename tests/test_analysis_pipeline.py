@@ -39,9 +39,11 @@ def test_genomic_pipeline_returns_complete_analysis() -> None:
 
     result = run_analysis_pipeline(variant)
 
-    assert result["project_version"] == "0.5.0"
+    assert result["project_version"] == "0.7.0"
     assert result["analysis_status"] == "completed"
-
+    assert result["final_report"]["status"] == "completed"
+    
+    
     preprocessing = result["preprocessing"]
 
     assert preprocessing["mutation"]["mutation_type"] == "SNV"
@@ -422,3 +424,66 @@ def test_pipeline_includes_tf_binding_analysis(
     assert tf_result["status"] == "completed"
     assert tf_result["counts"]["gained"] == 1
     assert tf_result["counts"]["lost"] == 1
+    
+    
+    
+def test_pipeline_includes_splicing_analysis(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    variant = VariantInput(
+        analysis_mode="genomic",
+        reference_sequence="GACTCACCCGA",
+        mutated_sequence="GACTCCCCCGA",
+        chromosome="chr22",
+        genomic_position=36201698,
+        gene_name="APOL4",
+        tissue="colon",
+        strand="-",
+    )
+
+    fake_model = object()
+
+    fake_splicing_result = {
+        "status": "completed",
+        "analysis_type": "merged_splicing",
+        "target_gene": "APOL4",
+        "target_gene_summary": {
+            "splice_sites": 0.9726,
+            "splice_site_usage": 0.8632,
+            "splice_junctions": 7.46875,
+            "merged_splicing_score": 3.3296,
+        },
+    }
+
+    def fake_analyze_variant_splicing(
+        model: object,
+        variant_input: VariantInput,
+    ) -> dict[str, object]:
+        assert model is fake_model
+        assert variant_input.gene_name == "APOL4"
+
+        return fake_splicing_result
+
+    monkeypatch.setattr(
+        (
+            "src.pipeline.analysis_pipeline."
+            "analyze_variant_splicing"
+        ),
+        fake_analyze_variant_splicing,
+    )
+
+    result = run_analysis_pipeline(
+        variant=variant,
+        run_splicing_analysis=True,
+        alphagenome_model=fake_model,
+    )
+
+    splicing = result["splicing_analysis"]
+
+    assert splicing["status"] == "completed"
+
+    assert splicing[
+        "target_gene_summary"
+    ]["merged_splicing_score"] == pytest.approx(
+        3.3296
+    )
