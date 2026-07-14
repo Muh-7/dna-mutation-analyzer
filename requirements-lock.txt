@@ -1,5 +1,7 @@
 annotated-types==0.7.0
 anyio==4.14.2
+argcomplete==3.7.0
+argh==0.31.3
 argon2-cffi==25.1.0
 argon2-cffi-bindings==25.1.0
 arrow==1.4.0
@@ -20,6 +22,7 @@ defusedxml==0.7.1
 executing==2.2.1
 fastjsonschema==2.21.2
 fqdn==1.5.1
+gffutils==0.14
 h11==0.16.0
 httpcore==1.0.9
 httpx==0.28.1
@@ -70,6 +73,7 @@ pure_eval==0.2.3
 pycparser==3.0
 pydantic==2.13.4
 pydantic_core==2.46.4
+pyfaidx==0.9.0.4
 Pygments==2.20.0
 pytest==9.1.1
 python-dateutil==2.9.0.post0
@@ -85,6 +89,7 @@ rfc3987-syntax==1.1.0
 rpds-py==2026.6.3
 Send2Trash==2.1.0
 setuptools==83.0.0
+simplejson==4.1.1
 six==1.17.0
 soupsieve==2.8.4
 stack-data==0.6.3

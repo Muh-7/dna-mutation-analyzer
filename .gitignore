@@ -54,3 +54,11 @@ reports/
 # Temporary files
 *.tmp
 *.temp
+
+# Genomic annotation data
+data/annotations/*.gtf
+data/annotations/*.gtf.gz
+data/annotations/*.db
+data/annotations/*.db-journal
+data/annotations/*.db-shm
+data/annotations/*.db-wal
