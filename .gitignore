@@ -62,3 +62,9 @@ data/annotations/*.db
 data/annotations/*.db-journal
 data/annotations/*.db-shm
 data/annotations/*.db-wal
+
+# Local reference genome
+data/reference/*.fa
+data/reference/*.fa.gz
+data/reference/*.fai
+data/reference/*.gzi
